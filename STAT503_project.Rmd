@@ -1,0 +1,93 @@
+---
+title: "R Notebook"
+output: pdf_notebook
+---
+
+"Drug Consumption Quantified Dataset" 
+The dataset contains information on the consumption of 18 central nervous system psychoactivedrugs. The dataset has 32 attributes and 1885 instances from respondents aged over 18 in English-speaking countries.
+
+Objective:
+We intend to evaluate an individual's risk of drug misuse based on personality characteristics such as Big Five personality traits (NEO-FFI-R), impulsivity (BIS-11),sensation seeking (ImpSS), and demographic information in English-speaking countries.
+
+-Nonparametric Classification:
+K-Nearest Neighbour
+Random Forest
+-Parametric Classification:
+Logistic Regression
+Naive Bayes
+LDA/QDA
+
+```{r, warning=FALSE, message=FALSE}
+library(dplyr)
+library(MASS) 
+library(rpart)
+library(rpart.plot)
+library(tidyr)
+library(corrplot)
+library(ggplot2)
+library(class)
+library(e1071)
+```
+
+All input attributes are originally categorical and are quantified. After quantification values of all input features can be considered as real-valued.
+Calculated polychoric correlation to quantify ordinal features.
+Used Nonlinear Categorical Principal Component Analysis to quantify nominal features (gender, country, ethnicity).
+
+```{r}
+drug = read.csv("drug_consumption.csv", header = FALSE)
+# remove index column
+drug = drug[complete.cases(drug), -1]
+names(drug) = c("Gender", "Age", "Education", "Country", "Ethnicity", "N", "E", "O", "A", "C", "Impulsive", "Sensation", "Alcohol", "Amphet", "Amyl", "Benzos", "Caff", "Cannabis", "Choc", "Coke", "Crack", "Ecstasy", "Heroin", "Ketamine", "Legalh", "LSD", "Meth", "Mushrooms", "Nicotine", "Semer", "VSA")
+
+# year-based binary classification
+# classify 'Never Used' + 'Used over a Decade Ago' + 'Used in Last Decade' as Non-user
+changey = function(x) ifelse(x %in% c("CL0", "CL1", "CL2"), "NonUser", "User")
+drug_y = drug %>% mutate_at(vars(13:31), changey) %>% mutate_if(is.character, as.factor)
+levels(drug_y[13:31]) = c("Non-User", "User")
+
+# decade-based binary classification
+# classify 'Never Used' + 'Used over a Decade Ago' as Non-user
+changed = function(x) ifelse(x %in% c("CL0", "CL1"), "NonUser", "User")
+drug_d = drug %>% mutate_at(vars(13:31), changed)  %>% mutate_if(is.character, as.factor)
+levels(drug_d[13:31]) = c("Non-User", "User")
+
+# separate training and testing set
+# can change drug_d to drug_y 
+# knn/logistic/RF
+set.seed(1)
+n = nrow(drug)
+train_id = sample(n, size = floor(n*0.7))
+train = drug_d[train_id,]
+train_x = train[, 1:12]
+train_label = train[, 13:31]
+test = drug_d[-train_id,]
+test_x = test[, 1:12]
+test_label = test[, 13:31]
+# lda/qda/nb 
+drug_U = which(drug_d$Alcohol == "User")
+drug_NU = which(drug_d$Alcohol == "NonUser")
+train_id = c(sample(drug_U, size = trunc(0.70 * length(drug_U))),
+             sample(drug_NU, size = trunc(0.70 * length(drug_NU))))
+# column index depends on classification for which drug (here alcohol-->col=13)
+drug_train = drug_d[train_id, 1:13]
+drug_test = drug_d[-train_id, 1:13]
+```
+
+
+```{r}
+pca_data = as.matrix(train_x)
+pca_results = princomp(pca_data, cor = F)
+summary(pca_results)
+plot(pca_results)
+```
+```{r EDA}
+# example
+str(train)
+pairs(train[1:4], col=c("blue", "green")[train$Alcohol], 
+      pch=c(1,2)[train$Alcohol])
+
+dat.explore = gather(train[,1:13], key = "Variable", value = "Value", -c("Alcohol"))
+ggplot(dat.explore) + geom_boxplot(aes(x = Alcohol, y = Value)) + facet_wrap(.~Variable, scales = "free_y") + theme_minimal()
+```
+
+
